@@ -130,6 +130,7 @@ int main (int argc, char *argv[]) {
 		childCount--;
 	} while(childCount > 0);
 	
+	
 	//Handle normal termination
 	if( shmdt(shared) == -1 ) {
 		errMsgFunction(errPreString, argv[0], "Parent failed to detatch shared memory");
@@ -138,9 +139,6 @@ int main (int argc, char *argv[]) {
 	if( shmctl(shmID, IPC_RMID, 0) == -1 ) {
 		errMsgFunction(errPreString, argv[0], "Failed to free shared memory segment");
 		return -1;
-	}
-	for(i = 0; i < j; i++) {
-		free(&childpid[i]);
 	}
 	fclose(logfile);
 	return 0;

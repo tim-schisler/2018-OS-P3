@@ -22,7 +22,7 @@ int main (int argc, char *argv[]) {
 	}
 	
 	//Set Up Shared Memory
-	if( ( shmID = shmget(shmKey, shmSize, 0640) ) == -1 ) {
+	if( ( shmID = shmget(shmKey, shmSize, 0) ) == -1 ) {
 		perror("Child cannot identify shared memory segment");
 		return -1;
 	}
