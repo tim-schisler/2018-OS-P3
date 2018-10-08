@@ -1,7 +1,9 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
-
+#include<sys/types.h>
+#include<sys/ipc.h>
+#include<sys/shm.h>
 
 int main (int argc, char *argv[]) {
 
@@ -26,7 +28,7 @@ int main (int argc, char *argv[]) {
 		perror("Child cannot identify shared memory segment");
 		return -1;
 	}
-	if( ( shared = (int *)(shmat(shmID, 0, 0)) ) == (void *)-1 ) {
+	if( ( shared = /**/(int *)(shmat(shmID, 0, 0)) ) == (void *)-1 ) {
 		perror("Child cannot attach to shared memory");
 		return -1;
 	}
