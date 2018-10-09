@@ -7,6 +7,7 @@
 #include<sys/types.h>
 #include<sys/ipc.h>
 #include<sys/shm.h>
+#include<sys/sem.h>
 
 
 void helpMsgFunction(char *);
@@ -14,6 +15,7 @@ void errMsgFunction(char * , char * , char * );
 void killAllChildren();
 void handle_alarm();
 void handle_intr();
+void increment(int *, int );
 
 int childCount = 0,
 	j = 0,
@@ -25,6 +27,7 @@ pid_t *childpid;
 int main (int argc, char *argv[]) {
 
 	int c,
+		*clock,
 		i,
 		index,
 		shmID,
@@ -32,7 +35,8 @@ int main (int argc, char *argv[]) {
 	char *ossLogFileName = "ossLog.txt",
 		errPreString[120],
 		childArgK[60],
-		childArgS[60];
+		childArgS[60],
+		*shmMsg;
 	FILE *logfile;
 	key_t shmKey;
 	size_t shmSize;
@@ -77,7 +81,6 @@ int main (int argc, char *argv[]) {
 
 	
 	//Signal Handling:
-	
 	signal(SIGINT, handle_intr);
 	signal(SIGALRM, handle_alarm);	
 	alarm(mstrTermTime);
@@ -88,12 +91,12 @@ int main (int argc, char *argv[]) {
 	//Open the child log file
 	logfile = fopen(ossLogFileName, "w+");
 	
-	//Shared Memory:
+	//Shared memory setup:
 	if( ( shmKey = ftok(ossLogFileName, rand()%255 + 1) ) == -1 ) {
 		errMsgFunction(errPreString, argv[0], "Cannot create shared memory key");
 		return -1;
 	}
-	shmSize = 2*sizeof(int);
+	shmSize = 2*sizeof(int) + 81*sizeof(char);
 	if( ( shmID = shmget(shmKey, shmSize, IPC_CREAT|IPC_EXCL|0640) ) == -1 ) {
 		errMsgFunction(errPreString, argv[0], "Parent cannot create shared memory segment");
 		return -1;
@@ -103,6 +106,10 @@ int main (int argc, char *argv[]) {
 		return -1;
 	}
 	
+	//Initialize the shared clock and shared message area
+	clock = shared;
+	clock[0] = clock[1] = 0;
+	shmMsg = (char *)(shared + 2);
 	
 	//fork/exec
 	do {
@@ -121,7 +128,9 @@ int main (int argc, char *argv[]) {
 				}
 				break;
 			default:	//parent
-				++j % maxUserProc;
+				increment(clock, 333333);
+				j += 1;
+				j = j % maxUserProc;
 				childCount++;
 				break;
 			}
@@ -185,3 +194,10 @@ void handle_intr() {
 	exit(-1);
 }
 
+void increment(int *clkptr, int inc) {
+	clkptr[1] += inc;
+	if(clkptr[1] > 1000000000) {
+		clkptr[0] += clkptr[1] / 1000000000;
+		clkptr[1] = clkptr[1] % 1000000000;
+	}
+}

@@ -4,15 +4,20 @@
 #include<sys/types.h>
 #include<sys/ipc.h>
 #include<sys/shm.h>
+#include<sys/sem.h>
+
+#define DEBUG 0
 
 int main (int argc, char *argv[]) {
 
 	int c,
+		*clock,
 		index,
 		*shared,
 		shmID,
 		shmKey,
 		shmSize;
+	char *shmMsg;
 	
 	//Command line argument processing
 	if(argc != 3) {
@@ -33,8 +38,12 @@ int main (int argc, char *argv[]) {
 		return -1;
 	}
 	
-	sleep(1);
-	printf("Child %ld reporting.\n", (long)getpid());
+	clock = shared;
+	shmMsg = (char *)(shared + 2);
+	
+	printf("Child %ld reporting. Clock: %d.%-09.9dsec\n", (long)getpid(), clock[0], clock[1]);
+	
+	while(DEBUG);
 	
 	
 	//Detatch from Shared Memory
