@@ -8,10 +8,10 @@
 #include<sys/ipc.h>
 #include<sys/shm.h>
 #include<sys/sem.h>
+#include"P3common.h"
 
 
-void helpMsgFunction(char *);
-void errMsgFunction(char * , char * , char * );
+
 void killAllChildren();
 void handle_alarm();
 void handle_intr();
@@ -30,13 +30,14 @@ int main (int argc, char *argv[]) {
 		*clock,
 		i,
 		index,
+		semID,
 		shmID,
+		*shmMsg,
 		waitint;
 	char *ossLogFileName = "ossLog.txt",
 		errPreString[120],
 		childArgK[60],
-		childArgS[60],
-		*shmMsg;
+		childArgS[60];
 	FILE *logfile;
 	key_t shmKey;
 	size_t shmSize;
@@ -105,11 +106,18 @@ int main (int argc, char *argv[]) {
 		errMsgFunction(errPreString, argv[0], "Parent cannot attach to shared memory");
 		return -1;
 	}
+	if(( semID = semget(shmKey, 1, IPC_CREAT | IPC_EXCL | 0640) ) == -1) {
+		errMsgFunction(errPreString, argv[0], "Semaphore creation failed");
+	}
 	
-	//Initialize the shared clock and shared message area
+	//Initialize the shared clock and shared message area.
+	//The message will consist of three integers: the child's PID,
+	//and the two integers of the clock reading at that child's
+	//message time.
 	clock = shared;
 	clock[0] = clock[1] = 0;
-	shmMsg = (char *)(shared + 2);
+	shmMsg = (shared + 2);
+	shmMsg[0] = shmMsg[1] = shmMsg[2] = 0;
 	
 	//fork/exec
 	do {
@@ -120,8 +128,8 @@ int main (int argc, char *argv[]) {
 				errMsgFunction(errPreString, argv[0], "Fork failure");
 				return -1;
 			case 0:	//child
-				sprintf(childArgK, "%d", shmKey);
-				sprintf(childArgS, "%d", shmSize);
+				sprintf(childArgK, "%59d", shmKey);
+				sprintf(childArgS, "%59d", shmSize);
 				if( execl("./user", "./user", childArgK, childArgS, (char *)NULL) == -1) {
 					errMsgFunction(errPreString, argv[0], "Exec failure");
 					return -1;
@@ -155,24 +163,6 @@ int main (int argc, char *argv[]) {
 
 
 
-void helpMsgFunction(char *enm) {
-	
-	printf("\nInvoke %s with the following options:\n", enm);
-	printf("\t-h to print this help message.\n");
-	printf("\t-s x, where x is an integer.\n");
-	printf("\t\ts specifies how many children to create.\n");
-	printf("\t-t z, where z is an integer.\n");
-	printf("\t\tt specifies how many seconds %s may run.\n", enm); 
-	printf("\t-l filename\n");
-	printf("\t\tl specifies the location of the log file.\n");
-}
-
-void errMsgFunction(char *s, char *arg, char *func) {
-	strcpy(s, arg);
-	strcat(s, func);
-	perror(s);
-}
-
 void killAllChildren() {
 	int i;
 	for (i = 0; i < maxUserProc; i++) {
@@ -196,8 +186,5 @@ void handle_intr() {
 
 void increment(int *clkptr, int inc) {
 	clkptr[1] += inc;
-	if(clkptr[1] > 1000000000) {
-		clkptr[0] += clkptr[1] / 1000000000;
-		clkptr[1] = clkptr[1] % 1000000000;
-	}
+	canonicalize(clkptr);
 }
