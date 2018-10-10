@@ -16,7 +16,9 @@ void killAllChildren();
 void handle_alarm();
 void handle_intr();
 void increment(int *, int );
+void semLog(char *, int *, int *);
 
+FILE *logfile;
 int childCount = 0,
 	j = 0,
 	maxUserProc = 5,
@@ -38,9 +40,11 @@ int main (int argc, char *argv[]) {
 		errPreString[120],
 		childArgK[60],
 		childArgS[60];
-	FILE *logfile;
+	
 	key_t shmKey;
+	pid_t killed;
 	size_t shmSize;
+	union semun arg;
 	
 	srand(time(0));
 
@@ -80,7 +84,6 @@ int main (int argc, char *argv[]) {
 	for (index = optind; index < argc; index++)
 		printf ("Non-option argument %s\n", argv[index]);
 
-	
 	//Signal Handling:
 	signal(SIGINT, handle_intr);
 	signal(SIGALRM, handle_alarm);	
@@ -109,16 +112,73 @@ int main (int argc, char *argv[]) {
 	if(( semID = semget(shmKey, 1, IPC_CREAT | IPC_EXCL | 0640) ) == -1) {
 		errMsgFunction(errPreString, argv[0], "Semaphore creation failed");
 	}
+	arg.val = 1;
+	if( semctl(semID, 0, SETVAL, arg) == -1 ) {
+		errMsgFunction(errPreString, argv[0], "Failed to initialize semaphore");
+		return -1;
+	}
 	
 	//Initialize the shared clock and shared message area.
-	//The message will consist of three integers: the child's PID,
-	//and the two integers of the clock reading at that child's
-	//message time.
 	clock = shared;
 	clock[0] = clock[1] = 0;
 	shmMsg = (shared + 2);
 	shmMsg[0] = shmMsg[1] = shmMsg[2] = 0;
+
+	//Prepare arguments to pass to children processes
+	sprintf(childArgK, "%59d", shmKey);
+	sprintf(childArgS, "%59d", shmSize);
 	
+	//Fork the first generation of children
+	for(j = 0; j < maxUserProc; j++, childCount++) {
+		switch ( childpid[j] = fork() )
+		{
+		case -1:
+			errMsgFunction(errPreString, argv[0], "Fork failure");
+			return -1;
+		case 0:	//child
+			if( execl("./user", "./user", childArgK, childArgS, (char *)NULL) == -1) {
+				errMsgFunction(errPreString, argv[0], "execl() failure");
+				return -1;
+			}
+			break;
+		default:	//parent
+			break;
+		}
+	}
+	
+	//Simulation loop:
+	do {
+		increment(clock, 333333);
+		if(shmMsg[0] != 0) {
+			semLog(argv[0], shmMsg, clock);
+			if((killed = waitpid((pid_t)shmMsg[0], &waitint, 0))==(pid_t)-1) {
+				errMsgFunction(errPreString, argv[0], "waitpid() failure");
+				return -1;
+			}
+			shmMsg[0] = shmMsg[1] = shmMsg[2] = 0;
+			for(j = 0; j < maxUserProc; j++) {
+				if(childpid[j] == killed) {
+					switch ( childpid[j] = fork() )
+					{
+					case -1:
+						errMsgFunction(errPreString, argv[0], "Fork failure");
+						return -1;
+					case 0:	//child
+						if( execl("./user", "./user", childArgK, childArgS, (char *)NULL) == -1) {
+							errMsgFunction(errPreString, argv[0], "execl() failure");
+							return -1;
+						}
+						break;
+					default:	//parent
+						break;
+					}
+					break;
+				}
+			}
+			childCount++;
+		}
+	} while( (childCount <= 100) && (clock[0] < 3) );
+/*
 	//fork/exec
 	do {
 		while(childCount < maxUserProc) {
@@ -128,8 +188,6 @@ int main (int argc, char *argv[]) {
 				errMsgFunction(errPreString, argv[0], "Fork failure");
 				return -1;
 			case 0:	//child
-				sprintf(childArgK, "%59d", shmKey);
-				sprintf(childArgS, "%59d", shmSize);
 				if( execl("./user", "./user", childArgK, childArgS, (char *)NULL) == -1) {
 					errMsgFunction(errPreString, argv[0], "Exec failure");
 					return -1;
@@ -146,9 +204,13 @@ int main (int argc, char *argv[]) {
 		wait(&waitint);
 		childCount--;
 	} while(childCount > 0);
-	
+*/	
 	
 	//Handle normal termination
+	if( semctl(semID, 0, IPC_RMID) == -1 ) {
+		errMsgFunction(errPreString, argv[0], "failed to remove semaphore");
+		return -1;
+	}
 	if( shmdt(shared) == -1 ) {
 		errMsgFunction(errPreString, argv[0], "Parent failed to detatch shared memory");
 		return -1;
@@ -158,6 +220,7 @@ int main (int argc, char *argv[]) {
 		return -1;
 	}
 	fclose(logfile);
+	free(childpid);
 	return 0;
 }
 
@@ -165,11 +228,9 @@ int main (int argc, char *argv[]) {
 
 void killAllChildren() {
 	int i;
-	for (i = 0; i < maxUserProc; i++) {
+	for (i = 0; i < maxUserProc; i++)
 		if(kill(childpid[i], SIGTERM) == -1)
 			perror("Failed to kill a child");
-		
-	}
 }
 
 void handle_alarm() {
@@ -187,4 +248,8 @@ void handle_intr() {
 void increment(int *clkptr, int inc) {
 	clkptr[1] += inc;
 	canonicalize(clkptr);
+}
+
+void semLog(char *arg, int *msg, int *clk) {
+	fprintf(logfile, "%s: Child %d reached %d.%-09.9d in user process. Terminating at OSS time %d.%-09.9d\n", arg, msg[0], msg[1], msg[2], clk[0], clk[1]);
 }

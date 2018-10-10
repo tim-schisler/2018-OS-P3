@@ -13,6 +13,7 @@
 
 int main (int argc, char *argv[]) {
 
+	char errPreString[120];
 	int c,
 		*clock,
 		deadline[2],
@@ -24,6 +25,9 @@ int main (int argc, char *argv[]) {
 		shmKey,
 		*shmMsg,
 		shmSize;
+	
+	struct sembuf waitOp = {0, -1, 0},
+			signalOp = {0, 1, 0};
 	
 	srand(time(0));
 	
@@ -38,17 +42,17 @@ int main (int argc, char *argv[]) {
 	
 	//Set Up Shared Memory
 	if( ( shmID = shmget(shmKey, shmSize, 0) ) == -1 ) {
-		perror("Child cannot identify shared memory segment");
+		errMsgFunction(errPreString, argv[0], "cannot identify shared memory segment");
 		return -1;
 	}
-	if( ( shared = /**/(int *)(shmat(shmID, 0, 0)) ) == (void *)-1 ) {
-		perror("Child cannot attach to shared memory");
+	if( ( shared = (int *)(shmat(shmID, 0, 0)) ) == (void *)-1 ) {
+		errMsgFunction(errPreString, argv[0], "cannot attach to shared memory");
 		return -1;
 	}
 	clock = shared;
 	shmMsg = (shared + 2);
 	if(( semID = semget(shmKey, 1, 0640) ) == -1) {
-		perror("Child failed to find semaphore");
+		errMsgFunction(errPreString, argv[0], "failed to find semaphore");
 	}
 	
 	//Generate the termination deadline
@@ -59,16 +63,34 @@ int main (int argc, char *argv[]) {
 	
 	//Critical region:
 	do {
-		
-		
-	} while(DEBUG);
+		if(semop(semID, &waitOp, 1) == -1) {
+			errMsgFunction(errPreString, argv[0], "semaphore wait failed");
+			return -1;
+		}
+		if((clock[0] >= deadline[0]) || (clock[1] >= deadline[1])) {
+			if(shmMsg[0] = 0) {
+				shmMsg[0] = getpid();
+				shmMsg[1] = clock[0];
+				shmMsg[2] = clock[1];
+				if(semop(semID, &signalOp, 1) == -1) {
+					errMsgFunction(errPreString, argv[0], "semaphore signal failed");
+					return -1;
+				}
+				break;
+			}
+		}
+		if(semop(semID, &signalOp, 1) == -1) {
+			errMsgFunction(errPreString, argv[0], "semaphore signal failed");
+			return -1;
+		}
+	} while(1);
 	
 
-	printf("Child %ld reporting. Clock: %d.%-09.9dsec\n", (long)getpid(), clock[0], clock[1]);
+	//printf("Child %ld reporting. Clock: %d.%-09.9dsec\n", (long)getpid(), clock[0], clock[1]);
 	
 	//Detatch from Shared Memory
 	if( shmdt(shared) == -1 ) {
-		perror("Child failed to detatch shared memory");
+		errMsgFunction(errPreString, argv[0], "failed to detatch shared memory");
 		return -1;
 	}
 	

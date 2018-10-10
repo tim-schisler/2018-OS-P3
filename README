@@ -2,5 +2,9 @@ Tim Schisler
 University of Missouri - St. Louis
 Operating Systems CS4760
 Assignment 3: Semaphores and Operating System Simulator
-10/01/2018
+10/10/2018
 
+
+
+The shared message consists of three integers: the child's PID, and the two
+integers of the clock reading at that child's message time.

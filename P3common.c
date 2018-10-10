@@ -16,6 +16,7 @@ void helpMsgFunction(char *enm) {
 
 void errMsgFunction(char *s, char *arg, char *func) {
 	strcpy(s, arg);
+	strcat(s, " ");
 	strcat(s, func);
 	perror(s);
 }
