@@ -2,9 +2,13 @@ Tim Schisler
 University of Missouri - St. Louis
 Operating Systems CS4760
 Assignment 3: Semaphores and Operating System Simulator
-10/10/2018
+10/15/2018
 
-
+Invoke `make all` to construct both oss and user executables; then call ./oss
+to begin the program.
 
 The shared message consists of three integers: the child's PID, and the two
 integers of the clock reading at that child's message time.
+
+This project uses git for version control.  A log of committed changes may be
+produced by invoking `git log` along with any options you may desire.
