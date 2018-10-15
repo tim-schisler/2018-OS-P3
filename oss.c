@@ -11,18 +11,21 @@
 #include"P3common.h"
 
 
-
 void killAllChildren();
 void handle_alarm();
 void handle_intr();
 void increment(int *, int );
 void semLog(char *, int *, int *);
+void freeShared(int *, int , int , char *, char *);
 
 FILE *logfile;
+char errPreString[120];
 int childCount = 0,
 	j = 0,
 	maxUserProc = 5,
 	mstrTermTime = 2,
+	semID,
+	shmID,
 	*shared;
 pid_t *childpid;
 
@@ -32,18 +35,17 @@ int main (int argc, char *argv[]) {
 		*clock,
 		i,
 		index,
-		semID,
-		shmID,
 		*shmMsg,
 		waitint;
 	char *ossLogFileName = "ossLog.txt",
-		errPreString[120],
 		childArgK[60],
 		childArgS[60];
 	
 	key_t shmKey;
 	pid_t killed;
 	size_t shmSize;
+	struct sembuf waitOp = {0, -1, 0},
+			signalOp = {0, 1, 0};
 	union semun arg;
 	
 	srand(time(0));
@@ -148,7 +150,11 @@ int main (int argc, char *argv[]) {
 	
 	//Simulation loop:
 	do {
-		increment(clock, 333333);
+		increment(clock, 3333);
+		if(semop(semID, &waitOp, 1) == -1) {
+			errMsgFunction(errPreString, argv[0], "semaphore wait failed");
+			return -1;
+		}
 		if(shmMsg[0] != 0) {
 			semLog(argv[0], shmMsg, clock);
 			if((killed = waitpid((pid_t)shmMsg[0], &waitint, 0))==(pid_t)-1) {
@@ -156,6 +162,8 @@ int main (int argc, char *argv[]) {
 				return -1;
 			}
 			shmMsg[0] = shmMsg[1] = shmMsg[2] = 0;
+			//Search the array for the position of the old child;
+			//spawn a new child process in its place.
 			for(j = 0; j < maxUserProc; j++) {
 				if(childpid[j] == killed) {
 					switch ( childpid[j] = fork() )
@@ -177,50 +185,18 @@ int main (int argc, char *argv[]) {
 			}
 			childCount++;
 		}
-	} while( (childCount <= 100) && (clock[0] < 3) );
-/*
-	//fork/exec
-	do {
-		while(childCount < maxUserProc) {
-			switch ( childpid[j] = fork() )
-			{
-			case -1:
-				errMsgFunction(errPreString, argv[0], "Fork failure");
-				return -1;
-			case 0:	//child
-				if( execl("./user", "./user", childArgK, childArgS, (char *)NULL) == -1) {
-					errMsgFunction(errPreString, argv[0], "Exec failure");
-					return -1;
-				}
-				break;
-			default:	//parent
-				increment(clock, 333333);
-				j += 1;
-				j = j % maxUserProc;
-				childCount++;
-				break;
-			}
+		if(semop(semID, &signalOp, 1) == -1) {
+			errMsgFunction(errPreString, argv[0], "semaphore signal failed");
+			return -1;
 		}
-		wait(&waitint);
-		childCount--;
-	} while(childCount > 0);
-*/	
+	} while( 1 );	//(childCount <= 100) && (clock[0] < 3)
+	
 	
 	//Handle normal termination
-	if( semctl(semID, 0, IPC_RMID) == -1 ) {
-		errMsgFunction(errPreString, argv[0], "failed to remove semaphore");
-		return -1;
-	}
-	if( shmdt(shared) == -1 ) {
-		errMsgFunction(errPreString, argv[0], "Parent failed to detatch shared memory");
-		return -1;
-	}
-	if( shmctl(shmID, IPC_RMID, 0) == -1 ) {
-		errMsgFunction(errPreString, argv[0], "Failed to free shared memory segment");
-		return -1;
-	}
+	freeShared(shared, shmID, semID, errPreString, argv[0]);
 	fclose(logfile);
 	free(childpid);
+
 	return 0;
 }
 
@@ -236,12 +212,14 @@ void killAllChildren() {
 void handle_alarm() {
 	perror("Timer expired");
 	killAllChildren();
+	freeShared(shared, shmID, semID, errPreString, "Alarm handler: ");
 	exit(-1);
 }
 
 void handle_intr() {
 	perror("Received Ctrl+C");
 	killAllChildren();
+	freeShared(shared, shmID, semID, errPreString, "Interrupt handler: ");
 	exit(-1);
 }
 
@@ -252,4 +230,19 @@ void increment(int *clkptr, int inc) {
 
 void semLog(char *arg, int *msg, int *clk) {
 	fprintf(logfile, "%s: Child %d reached %d.%-09.9d in user process. Terminating at OSS time %d.%-09.9d\n", arg, msg[0], msg[1], msg[2], clk[0], clk[1]);
+}
+
+void freeShared(int *shm, int shmid, int semid, char *err, char *arg) {
+	if( shmdt(shm) == -1 ) {
+		errMsgFunction(err, arg, "Parent failed to detatch shared memory");
+		exit(-1);
+	}
+	if( shmctl(shmid, IPC_RMID, 0) == -1 ) {
+		errMsgFunction(err, arg, "Failed to free shared memory segment");
+		exit(-1);
+	}
+	if( semctl(semid, 0, IPC_RMID) == -1 ) {
+		errMsgFunction(err, arg, "failed to remove semaphore");
+		exit(-1);
+	}
 }

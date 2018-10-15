@@ -9,7 +9,7 @@
 #include<sys/sem.h>
 #include"P3common.h"
 
-#define DEBUG 0
+//#define DEBUG 1
 
 int main (int argc, char *argv[]) {
 
@@ -22,9 +22,9 @@ int main (int argc, char *argv[]) {
 		*shared,
 		semID,
 		shmID,
-		shmKey,
 		*shmMsg,
 		shmSize;
+	key_t shmKey;
 	
 	struct sembuf waitOp = {0, -1, 0},
 			signalOp = {0, 1, 0};
@@ -35,8 +35,9 @@ int main (int argc, char *argv[]) {
 	if(argc != 3) {
 		fprintf(stderr, "Child %ld was passed incomplete args.\n", (long)getpid());
 		return -1;
-	} else {
-		shmKey = atoi(argv[1]);
+	}
+	else {
+		shmKey = (key_t)(atoi(argv[1]));
 		shmSize = atoi(argv[2]);
 	}
 	
@@ -51,8 +52,9 @@ int main (int argc, char *argv[]) {
 	}
 	clock = shared;
 	shmMsg = (shared + 2);
-	if(( semID = semget(shmKey, 1, 0640) ) == -1) {
+	if(( semID = semget(shmKey, 1, 0) ) == -1) {
 		errMsgFunction(errPreString, argv[0], "failed to find semaphore");
+		return -1;
 	}
 	
 	//Generate the termination deadline
@@ -68,12 +70,12 @@ int main (int argc, char *argv[]) {
 			return -1;
 		}
 		if((clock[0] >= deadline[0]) || (clock[1] >= deadline[1])) {
-			if(shmMsg[0] = 0) {
+			if(shmMsg[0] == 0) {
 				shmMsg[0] = getpid();
 				shmMsg[1] = clock[0];
 				shmMsg[2] = clock[1];
 				if(semop(semID, &signalOp, 1) == -1) {
-					errMsgFunction(errPreString, argv[0], "semaphore signal failed");
+					errMsgFunction(errPreString, argv[0], "semaphore signal failed after writing message");
 					return -1;
 				}
 				break;
